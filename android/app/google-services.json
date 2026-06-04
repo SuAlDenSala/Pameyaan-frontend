@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "321818567146",
+    "project_id": "pameyaan",
+    "storage_bucket": "pameyaan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:321818567146:android:f1e3ed9c95b409cea71293",
+        "android_client_info": {
+          "package_name": "com.example.pemeyaan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDO6DwtvAIRuNbX92pVgMJTYfUjlxry-Lw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
