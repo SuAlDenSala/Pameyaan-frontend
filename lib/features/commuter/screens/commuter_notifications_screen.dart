@@ -2,19 +2,17 @@ import 'package:flutter/material.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 
-class DriverNotificationsScreen extends StatefulWidget {
-  // NEW: Require the driver's unique franchise number so we can fetch their specific alerts
-  final String franchiseNumber; 
+class CommuterNotificationsScreen extends StatefulWidget {
+  // We use the email to identify the commuter's specific notifications
+  final String email;
 
-  const DriverNotificationsScreen({super.key, required this.franchiseNumber});
+  const CommuterNotificationsScreen({super.key, required this.email});
 
   @override
-  State<DriverNotificationsScreen> createState() => _DriverNotificationsScreenState();
+  State<CommuterNotificationsScreen> createState() => _CommuterNotificationsScreenState();
 }
 
-class _DriverNotificationsScreenState extends State<DriverNotificationsScreen> {
-  
-
+class _CommuterNotificationsScreenState extends State<CommuterNotificationsScreen> {
   List<dynamic> _notifications = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -27,8 +25,8 @@ class _DriverNotificationsScreenState extends State<DriverNotificationsScreen> {
 
   Future<void> _fetchNotifications() async {
     try {
-      // NEW: Pointing to the new CRUD router and passing the target_id
-      final response = await ApiClient.instance.get('/notifications/${widget.franchiseNumber}');
+      // Calls the centralized FastAPI notification router
+      final response = await ApiClient.instance.get('/notifications/${widget.email}');
       
       if (response.statusCode == 200) {
         setState(() {
@@ -40,11 +38,10 @@ class _DriverNotificationsScreenState extends State<DriverNotificationsScreen> {
       setState(() {
         _errorMessage = 'Could not fetch live notifications. Showing offline alerts.';
         _isLoading = false;
-        // Fallback static alerts
+        // Fallback static alerts if offline
         _notifications = [
-          {'title': 'Heavy Rain Warning', 'message': 'Proceed with caution on coastal roads.', 'type': 'warning'},
-          {'title': 'System Sync Successful', 'message': 'All your offline trips have been uploaded.', 'type': 'success'},
-          {'title': 'LGU Announcement', 'message': 'Terminal fees updated for Bongao Port. Please check the new matrix.', 'type': 'info'},
+          {'title': 'Welcome to Pemeyaan', 'message': 'Stay updated with your travel alerts here.', 'type': 'info'},
+          {'title': 'LGU Announcement', 'message': 'Always ask for the official LGU fare matrix.', 'type': 'warning'},
         ];
       });
     }
@@ -86,7 +83,7 @@ class _DriverNotificationsScreenState extends State<DriverNotificationsScreen> {
         if (_errorMessage != null)
           Container(
             padding: const EdgeInsets.all(12),
-            color: Colors.orange.withValues(alpha: 0.1),
+            color: Colors.orange.withOpacity(0.1),
             width: double.infinity,
             child: Text(
               _errorMessage!,
@@ -125,7 +122,7 @@ class _DriverNotificationsScreenState extends State<DriverNotificationsScreen> {
         border: Border(left: BorderSide(color: accent, width: 4)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )

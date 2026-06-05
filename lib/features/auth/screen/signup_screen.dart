@@ -17,6 +17,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _franchiseController = TextEditingController();
   final _passwordController = TextEditingController();
+
   String _discountStatus = 'Regular';
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -32,28 +33,34 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _handleSignup() async {
-    if (_nameController.text.isEmpty || _passwordController.text.isEmpty ||
-        (widget.isDriver ? _franchiseController.text.isEmpty : _emailController.text.isEmpty)) {
+    // NEW: Ensure email is required for both Driver and Commuter
+    if (_nameController.text.isEmpty || 
+        _passwordController.text.isEmpty || 
+        _emailController.text.isEmpty ||
+        (widget.isDriver && _franchiseController.text.isEmpty)) {
       _showToast('Please fill in all fields', Colors.orange);
       return;
     }
+
     setState(() => _isLoading = true);
     
     try {
       final endpoint = widget.isDriver ? '/drivers/signup' : '/commuters/register';
+      
       final payload = widget.isDriver
           ? {
-              "name": _nameController.text.trim(), 
-              "franchise_number": _franchiseController.text.trim(), 
+              "name": _nameController.text.trim(),
+              "franchise_number": _franchiseController.text.trim(),
+              "email": _emailController.text.trim(), // <-- NEW: Send email for Driver SSO Handshake
               "password": _passwordController.text
             }
           : {
-              "name": _nameController.text.trim(), 
-              "email": _emailController.text.trim(), 
-              "password": _passwordController.text, 
+              "name": _nameController.text.trim(),
+              "email": _emailController.text.trim(),
+              "password": _passwordController.text,
               "discount_status": _discountStatus
             };
-                  
+            
       final response = await ApiClient.instance.post(endpoint, data: payload);
       
       if (response.statusCode == 201) {
@@ -111,7 +118,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: TextStyle(color: context.dynamicMuted, fontSize: 16),
               ),
               const SizedBox(height: 32),
-
+              
               const Text('Full Name', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               TextField(
@@ -126,9 +133,10 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               const SizedBox(height: 24),
 
-              Text(widget.isDriver ? 'Franchise Number' : 'Email Address', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              if (widget.isDriver)
+              // NEW: Dynamic UI for Franchise & Email Layout
+              if (widget.isDriver) ...[
+                const Text('Franchise Number', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _franchiseController,
                   decoration: InputDecoration(
@@ -138,19 +146,23 @@ class _SignupScreenState extends State<SignupScreen> {
                     filled: true,
                     fillColor: context.dynamicCard,
                   ),
-                )
-              else
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your email',
-                    prefixIcon: const Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: context.dynamicCard,
-                  ),
                 ),
+                const SizedBox(height: 24),
+              ],
+
+              const Text('Email Address', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'Enter your email',
+                  prefixIcon: const Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: context.dynamicCard,
+                ),
+              ),
               const SizedBox(height: 24),
 
               const Text('Password', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -176,7 +188,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 const Text('Discount Status', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  initialValue: _discountStatus,
+                  value: _discountStatus,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.card_membership),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

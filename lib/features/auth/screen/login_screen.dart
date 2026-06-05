@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
-import 'package:firebase_messaging/firebase_messaging.dart'; // <-- 1. ADDED THIS IMPORT
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:firebase_messaging/firebase_messaging.dart'; 
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../commuter/screens/commuter_app_screen.dart';
@@ -29,11 +30,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() async {
+ void _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _showToast('Please fill in all fields', Colors.orange);
       return;
     }
+
     setState(() => _isLoading = true);
     
     final String inputId = _emailController.text.trim();
@@ -44,38 +46,36 @@ class _LoginScreenState extends State<LoginScreen> {
       final payload = widget.isDriver 
           ? { "franchise_number": inputId, "password": inputPass }
           : { "email": inputId, "password": inputPass };
-              
+                
       final response = await ApiClient.instance.post(endpoint, data: payload);
 
       if (response.statusCode == 200) {
-        // 1. Save the main auth token
         final token = response.data['access_token'];
+        final fetchedName = response.data['name']; // Grab the real name from backend!
+
         ApiClient.instance.options.headers['Authorization'] = 'Bearer $token';
         
-        // --- 2. NEW: FETCH & SEND FIREBASE TOKEN ---
         try {
           final fcmToken = await FirebaseMessaging.instance.getToken();
-          print("My Device FCM Token is: $fcmToken");
-          
           if (fcmToken != null) {
-            // Send the token to your FastAPI backend
             final tokenEndpoint = widget.isDriver ? '/drivers/me/fcm-token' : '/commuters/me/fcm-token';
             await ApiClient.instance.put(tokenEndpoint, data: {"fcm_token": fcmToken});
           }
         } catch (e) {
           print("Could not fetch or send FCM token: $e");
-          // We don't stop the login process if notifications fail
         }
-        // -------------------------------------------
 
-        // 3. Save Offline Credentials
+        // Save Credentials + Real Name to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('offline_id', inputId);
         await prefs.setString('offline_pass', inputPass);
         await prefs.setBool('offline_isDriver', widget.isDriver);
         
-        // 4. Navigate to Dashboard
-        _proceedToDashboard(inputId, isOffline: false);
+        if (fetchedName != null) {
+          await prefs.setString('offline_name', fetchedName); // <-- CACHE REAL NAME HERE
+        }
+        
+        _proceedToDashboard(inputId, isOffline: false, fetchedName: fetchedName);
       }
     } on DioException catch (e) {
       if (!mounted) return;
@@ -84,9 +84,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final savedId = prefs.getString('offline_id');
         final savedPass = prefs.getString('offline_pass');
         final savedIsDriver = prefs.getBool('offline_isDriver');
+        final savedName = prefs.getString('offline_name'); // <-- RETRIEVE CACHED NAME
         
         if (savedId == inputId && savedPass == inputPass && savedIsDriver == widget.isDriver) {
-          _proceedToDashboard(inputId, isOffline: true);
+          _proceedToDashboard(inputId, isOffline: true, fetchedName: savedName); // <-- PASS TO UI
           return; 
         } else {
           _showToast('No internet. Offline login failed.', Colors.redAccent);
@@ -108,27 +109,44 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _proceedToDashboard(String rawInput, {bool isOffline = false}) {
+
+  // NEW: Added fetchedName parameter
+  void _proceedToDashboard(String rawInput, {bool isOffline = false, String? fetchedName}) {
     if (!mounted) return;
     if (isOffline) {
       _showToast('Offline Mode: Logged in securely', Colors.orange);
     }
-    String extractedName = rawInput.contains('@') ? rawInput.split('@')[0] : rawInput;
-    if (extractedName.isNotEmpty) {
-      extractedName = extractedName[0].toUpperCase() + extractedName.substring(1).toLowerCase();
-    } else {
-      extractedName = widget.isDriver ? "Driver" : "Commuter";
+
+    // 1. Prioritize the real name from the Database
+    String extractedName = fetchedName ?? '';
+    
+    // 2. If no name exists (offline mode), fallback to formatting their raw login string
+    if (extractedName.isEmpty) {
+      extractedName = rawInput.contains('@') ? rawInput.split('@')[0] : rawInput;
+      if (extractedName.isNotEmpty) {
+        extractedName = extractedName[0].toUpperCase() + extractedName.substring(1).toLowerCase();
+      } else {
+        extractedName = widget.isDriver ? "Driver" : "Commuter";
+      }
     }
+
     String userInitials = extractedName.isNotEmpty ? extractedName[0].toUpperCase() : (widget.isDriver ? 'D' : 'C');
-    String formatId = rawInput.isNotEmpty ? rawInput.toUpperCase() : 'UNKNOWN-ID';
+    String formatId = widget.isDriver ? rawInput.toUpperCase() : 'UNKNOWN-ID';
 
     if (widget.isDriver) {
       Navigator.pushReplacement(context, MaterialPageRoute(
-        builder: (_) => DriverDashboardScreen(driverName: extractedName, initials: userInitials, franchiseNumber: formatId)
+        builder: (_) => DriverDashboardScreen(
+        driverName: extractedName, 
+        initials: userInitials, 
+        franchiseNumber: formatId)
       ));
     } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(
-        builder: (_) => CommuterAppScreen(fullName: extractedName, initials: userInitials, discountStatus: 'Regular')
+      Navigator.pushReplacement(
+        context, MaterialPageRoute(
+        builder: (_) => CommuterAppScreen(fullName: extractedName, 
+        initials: userInitials, 
+        discountStatus: 'Regular',
+         email: rawInput)
       ));
     }
   }
@@ -162,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: context.dynamicMuted, fontSize: 16),
               ),
               const SizedBox(height: 48),
-
+              
               Text(
                 widget.isDriver ? 'Franchise Number' : 'Email Address',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -180,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
+              
               const Text(
                 'Password',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -211,7 +229,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-
+              
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -228,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
+              
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

@@ -2,16 +2,15 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
-
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
-
-// Modular widgets
 import '../widgets/driver_header.dart';
 import '../widgets/trip_manager.dart';
 import '../widgets/driver_tabs.dart';
-import '../widgets/driver_my_trips_tab.dart'; // <-- Your new My Trips tab!
+import '../widgets/driver_my_trips_tab.dart'; 
+import '../widgets/sync_queue_panel.dart'; // <-- ADDED SYNC PANEL IMPORT
 import 'driver_settings_screen.dart';
+import 'driver_notifications_screen.dart';
 
 class DriverDashboardScreen extends StatefulWidget {
   final String driverName;
@@ -47,9 +46,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
     _currentDriverName = widget.driverName;
     _currentInitials = widget.initials;
 
-    // REDUCED TO 3 TABS: Earnings, Alerts, Drivers
     _dashboardTabController = TabController(length: 3, vsync: this);
-
     _fetchDriverHistory();
   }
 
@@ -72,6 +69,10 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
         _recentTrips = List<Map<String, dynamic>>.from(
           parsed['recent_trips'] ?? [],
         );
+        if (parsed['driver_name'] != null) {
+          _currentDriverName = parsed['driver_name'];
+          _currentInitials = _currentDriverName.isNotEmpty ? _currentDriverName[0].toUpperCase() : 'D';
+        }
         _isLoadingTrips = false;
       });
     }
@@ -85,11 +86,14 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
         await prefs.setString(cacheKey, jsonEncode(response.data));
         if (!mounted) return;
         setState(() {
-          _todaysEarnings = (response.data['todays_earnings'] ?? 0.0)
-              .toDouble();
+          _todaysEarnings = (response.data['todays_earnings'] ?? 0.0).toDouble();
           _recentTrips = List<Map<String, dynamic>>.from(
             response.data['recent_trips'] ?? [],
           );
+          if (response.data['driver_name'] != null) {
+            _currentDriverName = response.data['driver_name'];
+            _currentInitials = _currentDriverName.isNotEmpty ? _currentDriverName[0].toUpperCase() : 'D';
+          }
           _isLoadingTrips = false;
         });
       }
@@ -105,6 +109,47 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
     });
   }
 
+  Future<void> _showExitConfirmationDialog() async {
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final isDark = context.isDarkMode;
+        return AlertDialog(
+          backgroundColor: isDark ? AppColors.darkCard : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.exit_to_app, color: Colors.redAccent),
+              const SizedBox(width: 8),
+              Text('Exit App', style: TextStyle(color: context.dynamicText, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text('Are you sure you want to exit Pemeyaan Transport?', style: TextStyle(color: context.dynamicMuted)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('CANCEL', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 0,
+              ),
+              child: const Text('EXIT', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldExit == true) {
+      SystemNavigator.pop();
+    }
+  }
+
   @override
   void dispose() {
     _dashboardTabController.dispose();
@@ -118,7 +163,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        automaticallyImplyLeading: false, // Prevents back button from showing
+        automaticallyImplyLeading: false, 
         backgroundColor: isDark ? AppColors.darkCard : Colors.white,
         foregroundColor: textColor,
         elevation: 0,
@@ -131,11 +176,35 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
             color: textColor,
           ),
         ),
-        actions: [
+      actions: [
+          IconButton(
+            icon: const Icon(Icons.sync, color: AppColors.neonTeal),
+            tooltip: 'Sync Hub',
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) => const SyncQueuePanel(),
+              );
+            },
+          ),
+          
+        // <-- UPDATED THIS BUTTON -->
           IconButton(
             icon: Icon(Icons.notifications_outlined, color: textColor),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DriverNotificationsScreen(
+                    franchiseNumber: widget.franchiseNumber, // <-- ADD THIS LINE!
+                  ),
+                ),
+              );
+            },
           ),
+          const SizedBox(width: 8), 
         ],
       ),
       body: SafeArea(
@@ -253,32 +322,27 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
           setState(() {
             _selectedIndex = 0;
           });
-        }else {
-          SystemNavigator.pop(); // <-- ADDED THIS: Closes the app if already on Home!
+        } else {
+          _showExitConfirmationDialog(); 
         }
       },
       child: Scaffold(
         backgroundColor: isDark ? AppColors.darkBg : AppColors.softBg,
-
-        // STREAMLINED THE INDEXED STACK
         body: IndexedStack(
           index: _selectedIndex,
           children: [
-            _buildDashboardUI(), // 0. Home
-            const FareMatrixTab(), // 1. Matrix (Full Screen)
+            _buildDashboardUI(), 
+            const FareMatrixTab(), 
             DriverMyTripsTab(
               franchiseNumber: widget.franchiseNumber,
-            ), // 2. My Trips (Full Screen)
+            ), 
             DriverSettingsScreen(
-              // 3. Profile
               driverName: _currentDriverName,
               initials: _currentInitials,
               franchiseNumber: widget.franchiseNumber,
             ),
           ],
         ),
-
-        // CLEANED UP BOTTOM NAV BAR
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _selectedIndex,
           onTap: (index) => setState(() => _selectedIndex = index),

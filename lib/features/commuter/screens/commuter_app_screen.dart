@@ -1,23 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; 
-import 'package:firebase_messaging/firebase_messaging.dart'; // <-- 1. ADD FIREBASE IMPORT
-import '../../../core/theme/app_theme.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../widgets/commuter_header.dart';
-import '../widgets/commuter_tabs.dart'; 
+import '../widgets/commuter_tabs.dart';
 import 'commuter_settings_screen.dart';
 import '../widgets/trip_history_tab.dart';
-import '../widgets/unified_fares_tab.dart'; 
+import '../widgets/unified_fares_tab.dart';
+import 'commuter_notifications_screen.dart';
+
+// <-- REQUIRED IMPORT FOR THE SYNC BUTTON -->
+import '../../sync_engine/services/sync_service.dart'; 
+
 class CommuterAppScreen extends StatefulWidget {
   final String fullName;
   final String initials;
   final String discountStatus;
+  final String email; 
 
   const CommuterAppScreen({
     super.key,
     required this.fullName,
     required this.initials,
-    required this.discountStatus
+    required this.discountStatus,
+    required this.email, 
   });
 
   @override
@@ -26,8 +33,8 @@ class CommuterAppScreen extends StatefulWidget {
 
 class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTickerProviderStateMixin {
   late TabController _dashboardTabController;
-  int _selectedIndex = 0; 
-  
+  int _selectedIndex = 0;
+
   late String _fullName;
   late String _initials;
   late String _discountStatus;
@@ -39,10 +46,8 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
     _initials = widget.initials;
     _discountStatus = widget.discountStatus;
     
-    _dashboardTabController = TabController(length: 2, vsync: this); 
-
-    // <-- 2. WAKE UP THE FOREGROUND NOTIFICATION LISTENER
-    _setupPushNotifications(); 
+    _dashboardTabController = TabController(length: 2, vsync: this);
+    _setupPushNotifications();
   }
 
   @override
@@ -51,9 +56,7 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
     super.dispose();
   }
 
-  // --- 3. THE FOREGROUND NOTIFICATION LOGIC ---
   void _setupPushNotifications() async {
-    // A. Request Permission (Required for Android 13+ and iOS)
     NotificationSettings settings = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
@@ -61,14 +64,10 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
     );
     print('Notification permission status: ${settings.authorizationStatus}');
 
-    // B. Listen for incoming alerts while the app is actively OPEN
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (message.notification != null && mounted) {
-        
-        // Check if the backend sent a critical alert
         final bool isCritical = message.notification!.title?.contains('CRITICAL') ?? false;
         
-        // Show a beautiful in-app banner dropping down from the top
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Column(
@@ -89,7 +88,7 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
             backgroundColor: isCritical ? Colors.redAccent : AppColors.neonTeal,
             behavior: SnackBarBehavior.floating,
             margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).size.height - 150, // Pushes it to the top of the screen
+              bottom: MediaQuery.of(context).size.height - 150, 
               left: 16, 
               right: 16
             ),
@@ -123,7 +122,38 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
         surfaceTintColor: Colors.transparent,
         title: Text('Pemeyaan Transport', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: textColor)),
         actions: [
-          IconButton(icon: Icon(Icons.notifications_outlined, color: textColor), onPressed: () {}),
+          // <-- SYNC HUB ICON -->
+          IconButton(
+            icon: const Icon(Icons.sync, color: AppColors.neonTeal),
+            tooltip: 'Sync Data',
+            onPressed: () {
+              SyncService.syncOfflineData();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Syncing offline data...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), 
+                  backgroundColor: AppColors.neonTeal, 
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                )
+              );
+            },
+          ),
+          
+          // <-- NOTIFICATION BELL -->
+          IconButton(
+            icon: Icon(Icons.notifications_outlined, color: textColor), 
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CommuterNotificationsScreen(
+                    email: widget.email, 
+                  ),
+                ),
+              );
+            }
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
@@ -202,7 +232,6 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
       canPop: false, 
       onPopInvoked: (bool didPop) {
         if (didPop) return;
-
         if (_selectedIndex != 0) {
           setState(() {
             _selectedIndex = 0;
@@ -219,9 +248,9 @@ class _CommuterAppScreenState extends State<CommuterAppScreen> with SingleTicker
             _buildDashboardUI(), 
             UnifiedFaresTab(discountStatus: _discountStatus), 
             const TripHistoryTab(), 
-            CommuterSettingsScreen( 
-              fullName: _fullName, 
-              initials: _initials, 
+            CommuterSettingsScreen(
+              fullName: _fullName,
+              initials: _initials,
               discountStatus: _discountStatus
             ),
           ],

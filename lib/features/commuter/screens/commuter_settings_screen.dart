@@ -61,11 +61,15 @@ class _CommuterSettingsScreenState extends State<CommuterSettingsScreen> {
         builder: (context, setSheetState) {
           return Container(
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 24, top: 24, left: 24, right: 24),
-            decoration: BoxDecoration(color: context.dynamicCard, borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24))),
+            decoration: BoxDecoration(color: context.dynamicCard, borderRadius:
+            const BorderRadius.only(topLeft: Radius.circular(24), 
+            topRight: Radius.circular(24))),
             child: Column(
               mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: context.dynamicBorder, borderRadius: BorderRadius.circular(2)))),
+                Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: context.dynamicBorder,
+                 borderRadius: BorderRadius.circular(2)))),
                 const SizedBox(height: 24),
                 Text('Report an Issue', style: TextStyle(color: context.dynamicText, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
@@ -125,11 +129,14 @@ class _CommuterSettingsScreenState extends State<CommuterSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+
+    final bool isDark = context.isDarkMode;
+
     return Scaffold(
-      backgroundColor: _softBg,
+      backgroundColor: isDark ? AppColors.darkBg : AppColors.softBg,
       appBar: AppBar(
-        backgroundColor: _deepOcean,
-        foregroundColor: Colors.white,
+        backgroundColor: isDark ? AppColors.darkCard : Colors.white,
+        foregroundColor: context.dynamicText,
         elevation: 0,
         centerTitle: true,
         title: const Text('Account Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),

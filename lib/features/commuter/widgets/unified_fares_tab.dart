@@ -19,12 +19,12 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
   String? _selectedDestination;
   double _distance = 0.0;
   double _estimatedFare = 0.0;
+  bool _isCalculating = false; // <-- NEW: Loading State Tracker
   final List<String> _locations = DistanceCalculator.bongaoLocations.keys.toList()..sort();
 
   // --- Matrix State ---
   bool _isLoading = true;
   List<dynamic> _fares = [];
-  final Color _deepOcean = AppColors.deepOcean;
   final Color _neonTeal = AppColors.neonTeal;
 
   @override
@@ -33,33 +33,44 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
     _fetchFareMatrix();
   }
 
-  void _calculateFare() {
+  // FIXED: Converted to async to support the loading effect
+  Future<void> _calculateFare() async {
     if (_selectedOrigin != null && _selectedDestination != null) {
       if (_selectedOrigin == _selectedDestination) {
         setState(() {
           _distance = 0.0;
           _estimatedFare = 0.0;
+          _isCalculating = false;
         });
         return;
       }
       
-      // Get distance using your Haversine formula
-      double dist = DistanceCalculator.getDistanceInKm(_selectedOrigin!, _selectedDestination!);
+      // 1. Trigger the Loading Spinner
+      setState(() {
+        _isCalculating = true;
+      });
+
+      // 2. Add an intentional delay for the premium loading effect
+      await Future.delayed(const Duration(milliseconds: 800));
       
-      // Base Fare Logic (20 for first km, 5 per succeeding km)
+      // 3. Perform the actual calculation
+      double dist = DistanceCalculator.getDistanceInKm(_selectedOrigin!, _selectedDestination!);
       double baseFare = 20.0;
       double additionalFare = dist > 1.0 ? (dist - 1.0) * 5.0 : 0.0;
       double totalFare = baseFare + additionalFare;
       
-      // Apply Discount if Commuter is not Regular
       if (widget.discountStatus != 'Regular') {
         totalFare = totalFare * 0.80; // 20% LGU Discount
       }
       
-      setState(() {
-        _distance = dist;
-        _estimatedFare = totalFare;
-      });
+      // 4. Stop Loading and Reveal Result!
+      if (mounted) {
+        setState(() {
+          _distance = dist;
+          _estimatedFare = totalFare;
+          _isCalculating = false;
+        });
+      }
     }
   }
 
@@ -67,7 +78,6 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
     final prefs = await SharedPreferences.getInstance();
     const cacheKey = 'fare_matrix_cache';
     
-    // Load offline cache instantly
     final cachedData = prefs.getString(cacheKey);
     if (cachedData != null) {
       setState(() {
@@ -76,7 +86,6 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
       });
     }
     
-    // Fetch fresh data from backend
     try {
       final response = await ApiClient.instance.get('/fares/');
       if (response.statusCode == 200) {
@@ -90,6 +99,25 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showLocationPicker(String title, bool isOrigin) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LocationPickerSheet(
+        title: title,
+        locations: _locations,
+        onSelected: (val) {
+          setState(() {
+            if (isOrigin) _selectedOrigin = val;
+            else _selectedDestination = val;
+          });
+          _calculateFare(); // Automatically triggers the calculation and loading spinner!
+        },
+      ),
+    );
   }
 
   @override
@@ -110,14 +138,13 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // 1. FARE ESTIMATOR SECTION
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Fare Estimator', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                  Text('Fare Estimator', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 8),
                   Text('Select your route to calculate the official LGU fare.', style: TextStyle(color: context.dynamicMuted)),
                   const SizedBox(height: 24),
@@ -133,19 +160,41 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
                       children: [
                         _buildDropdown(
                           label: 'Pick-up Location', icon: Icons.my_location, iconColor: AppColors.neonTeal,
-                          value: _selectedOrigin, onChanged: (val) { setState(() => _selectedOrigin = val); _calculateFare(); },
+                          value: _selectedOrigin, isOrigin: true,
                         ),
                         const Padding(padding: EdgeInsets.only(left: 18, top: 8, bottom: 8), child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.more_vert, color: Colors.grey))),
                         _buildDropdown(
                           label: 'Drop-off Destination', icon: Icons.location_on, iconColor: Colors.redAccent,
-                          value: _selectedDestination, onChanged: (val) { setState(() => _selectedDestination = val); _calculateFare(); },
+                          value: _selectedDestination, isOrigin: false,
                         ),
                       ],
                     ),
                   ),
                   
-                  // RESULTS CARD
-                  if (_selectedOrigin != null && _selectedDestination != null && _selectedOrigin != _selectedDestination) ...[
+                  // NEW: THE LOADING OR RESULTS CARD
+                  if (_isCalculating) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      height: 140, // Keeps the card height consistent
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [AppColors.deepOcean, Color(0xFF1A365D)]),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: AppColors.deepOcean.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                      ),
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: AppColors.neonTeal),
+                            SizedBox(height: 16),
+                            Text('Calculating optimal route...', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0))
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] 
+                  else if (_selectedOrigin != null && _selectedDestination != null && _selectedOrigin != _selectedDestination) ...[
                     const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.all(24),
@@ -187,6 +236,7 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
                       ),
                     ),
                   ],
+                  
                   if (_selectedOrigin == _selectedDestination && _selectedOrigin != null)
                     const Padding(
                       padding: EdgeInsets.only(top: 16),
@@ -195,8 +245,7 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
                     
                   const SizedBox(height: 48),
                   
-                  // 2. OFFICIAL MATRIX HEADER
-                  Text('Official Fare Matrix', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                  Text('Official Fare Matrix', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 8),
                   Text('Standard LGU approved tricycle rates for Bongao.', style: TextStyle(color: context.dynamicMuted)),
                   const SizedBox(height: 24),
@@ -205,7 +254,6 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
             ),
           ),
           
-          // 3. MATRIX LIST SECTION
           if (_isLoading && _fares.isEmpty)
             const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: AppColors.neonTeal)))
           else if (_fares.isEmpty)
@@ -230,19 +278,28 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
     );
   }
 
-  Widget _buildDropdown({required String label, required IconData icon, required Color iconColor, required String? value, required Function(String?) onChanged}) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: iconColor),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: context.isDarkMode ? Colors.black12 : Colors.grey[50],
+  Widget _buildDropdown({required String label, required IconData icon, required Color iconColor, required String? value, required bool isOrigin}) {
+    return InkWell(
+      onTap: () => _showLocationPicker(label, isOrigin),
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, color: iconColor),
+          suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: context.isDarkMode ? Colors.black12 : Colors.white,
+        ),
+        child: Text(
+          value ?? '',
+          style: TextStyle(
+            color: context.dynamicText,
+            fontSize: 16,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
-      items: _locations.map((loc) => DropdownMenuItem(value: loc, child: Text(loc, overflow: TextOverflow.ellipsis))).toList(),
-      onChanged: onChanged,
     );
   }
 
@@ -274,6 +331,97 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
                 child: Text('Discounted: ₱ ${fare['student_fare']?.toStringAsFixed(2) ?? '0.00'}', style: TextStyle(color: _neonTeal, fontWeight: FontWeight.bold, fontSize: 12)),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LocationPickerSheet extends StatefulWidget {
+  final String title;
+  final List<String> locations;
+  final Function(String) onSelected;
+
+  const LocationPickerSheet({
+    super.key,
+    required this.title,
+    required this.locations,
+    required this.onSelected,
+  });
+
+  @override
+  State<LocationPickerSheet> createState() => _LocationPickerSheetState();
+}
+
+class _LocationPickerSheetState extends State<LocationPickerSheet> {
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredLocations = widget.locations
+        .where((loc) => loc.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      padding: EdgeInsets.only(
+        top: 24, left: 24, right: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24
+      ),
+      decoration: BoxDecoration(
+        color: context.dynamicCard,
+        borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: context.dynamicBorder, borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(widget.title, style: TextStyle(color: context.dynamicText, fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          
+          TextField(
+            autofocus: true,
+            onChanged: (val) => setState(() => _searchQuery = val),
+            style: TextStyle(color: context.dynamicText), 
+            decoration: InputDecoration(
+              hintText: 'Search barangay or school...',
+              hintStyle: TextStyle(color: context.dynamicMuted, fontSize: 14), 
+              prefixIcon: Icon(Icons.search, color: context.dynamicMuted), 
+              filled: true,
+              fillColor: context.isDarkMode ? AppColors.darkBg : const Color(0xFFF4F7F9), 
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          Expanded(
+            child: filteredLocations.isEmpty
+              ? Center(child: Text('No locations found.', style: TextStyle(color: context.dynamicMuted))) 
+              : ListView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: filteredLocations.length,
+                  itemBuilder: (context, index) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.location_on, color: AppColors.neonTeal),
+                      title: Text(
+                        filteredLocations[index],
+                        style: TextStyle(color: context.dynamicText, fontWeight: FontWeight.w600, fontSize: 14), 
+                      ),
+                      onTap: () {
+                        widget.onSelected(filteredLocations[index]);
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                ),
           ),
         ],
       ),

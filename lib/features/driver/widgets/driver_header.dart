@@ -1,21 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/app_theme.dart';
-import '../screens/driver_settings_screen.dart'; // <-- IMPORT SETTINGS SCREEN
-import 'sync_queue_panel.dart'; // <-- Add this import!
+import '../screens/driver_settings_screen.dart'; 
 
 class DriverHeader extends StatelessWidget {
   final String driverName;
   final String initials;
   final String franchiseNumber;
-  final Function(String) onProfileUpdated; // <-- ADD THIS LISTENER
+  final Function(String) onProfileUpdated; 
 
   const DriverHeader({
     super.key,
     required this.driverName,
     required this.initials,
     required this.franchiseNumber,
-    required this.onProfileUpdated, // <-- REQUIRE IT HERE
+    required this.onProfileUpdated, 
   });
 
   final Color _deepOcean = AppColors.deepOcean;
@@ -68,7 +67,6 @@ class DriverHeader extends StatelessWidget {
           Expanded(
             child: InkWell(
               onTap: () async {
-                // Open Settings and wait to see if they changed their name
                 final updatedName = await Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -80,7 +78,6 @@ class DriverHeader extends StatelessWidget {
                   ),
                 );
                 
-                // If they saved a new name, tell the Dashboard to refresh!
                 if (updatedName != null && updatedName is String) {
                   onProfileUpdated(updatedName);
                 }
@@ -92,34 +89,35 @@ class DriverHeader extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 24,
-                      backgroundColor: Colors.white,
-                      child: Text(initials, style: const TextStyle(color: AppColors.deepOcean, fontWeight: FontWeight.bold, fontSize: 18)),
+                      // DYNAMIC: Reverses the colors so the avatar pops in Light Mode!
+                      backgroundColor: context.isDarkMode ? Colors.white : AppColors.deepOcean,
+                      child: Text(initials, style: TextStyle(color: context.isDarkMode ? AppColors.deepOcean : Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('On Duty,', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+                          // FIXED: Uses dynamicMuted instead of hardcoded white
+                          Text('On Duty,', style: TextStyle(color: context.dynamicMuted, fontSize: 12)),
                           Row(
                             children: [
                               Flexible(
                                 child: Text(
                                   driverName, 
-                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                  // FIXED: Uses dynamicText instead of hardcoded white
+                                  style: TextStyle(color: context.dynamicText, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              Icon(Icons.edit, color: Colors.white.withValues(alpha: 0.5), size: 16), // Added the edit pencil!
                             ],
                           ),
                           const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: AppColors.neonTeal.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4), border: Border.all(color: AppColors.neonTeal.withValues(alpha: 0.5))),
-                            child: Text(franchiseNumber, style: const TextStyle(color: AppColors.neonTeal, fontSize: 10, fontWeight: FontWeight.bold)),
+                            child: Text(franchiseNumber, style: TextStyle(color: context.isDarkMode ? AppColors.neonTeal : Colors.teal[800], fontSize: 10, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
@@ -130,35 +128,8 @@ class DriverHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8), 
-          Row(
-            children: [
-              // <-- WRAPPED THE SYNC BADGE IN AN INKWELL -->
-              InkWell(
-                onTap: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => const SyncQueuePanel(), // Calls the new UI!
-                  );
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.sync, color: AppColors.neonTeal, size: 16),
-                      SizedBox(width: 4),
-                      Text('Sync Hub', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(icon: const Icon(Icons.qr_code, color: Colors.white, size: 28), onPressed: () => _showDriverQR(context)),
-            ],
-          ),
+          // FIXED: QR icon uses dynamicText
+          IconButton(icon: Icon(Icons.qr_code, color: context.dynamicText, size: 28), onPressed: () => _showDriverQR(context)),
         ],
       ),
     );
