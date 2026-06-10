@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Adds date formatting
+import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/network/api_client.dart';
@@ -28,7 +28,6 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
     final prefs = await SharedPreferences.getInstance();
     const cacheKey = 'commuter_history_cache';
 
-    // 1. Load offline cache instantly so the user doesn't wait
     final cachedData = prefs.getString(cacheKey);
     if (cachedData != null) {
       setState(() {
@@ -37,11 +36,10 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
       });
     }
 
-    // 2. Fetch fresh data from your FastAPI backend
     try {
       final response = await ApiClient.instance.get('/commuters/me/trips');
       if (response.statusCode == 200) {
-        await prefs.setString(cacheKey, jsonEncode(response.data)); // Update offline cache
+        await prefs.setString(cacheKey, jsonEncode(response.data));
         if (!mounted) return;
         setState(() {
           _trips = response.data;
@@ -49,9 +47,117 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
         });
       }
     } catch (e) {
-      // If offline, it just keeps showing the cached data
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ==========================================
+  // NEW: THE REAL RATING DIALOG LOGIC
+  // ==========================================
+  void _showRatingDialog(BuildContext context, dynamic trip) {
+    int _rating = 5;
+    bool _isFlagged = false;
+    TextEditingController _feedbackController = TextEditingController();
+    bool _isSubmitting = false;
+    
+    final String driverId = trip['driver_id'] ?? '';
+
+    if (driverId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot rate this mock trip.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Rate your trip', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('How was your ride with ${trip['driver_name'] ?? 'the driver'}?', style: const TextStyle(fontSize: 14)),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < _rating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 32,
+                        ),
+                        onPressed: () => setDialogState(() => _rating = index + 1),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _feedbackController,
+                    decoration: InputDecoration(
+                      hintText: 'Optional feedback...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text('Flag inappropriate behavior or colorum operation', style: TextStyle(fontSize: 12, color: Colors.redAccent)),
+                    value: _isFlagged,
+                    activeColor: Colors.redAccent,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (bool? value) {
+                      setDialogState(() => _isFlagged = value ?? false);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                onPressed: _isSubmitting ? null : () async {
+                  setDialogState(() => _isSubmitting = true);
+                  try {
+                    final response = await ApiClient.instance.post(
+                      '/drivers/$driverId/rate',
+                      data: {
+                        "rating_score": _rating,
+                        "feedback": _feedbackController.text,
+                        "is_flagged": _isFlagged
+                      },
+                    );
+                    if (response.statusCode == 201) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Rating submitted. Thank you for keeping the community safe!'), backgroundColor: AppColors.neonTeal),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to submit rating. You can only rate a driver once per hour.'), backgroundColor: Colors.redAccent),
+                    );
+                    setDialogState(() => _isSubmitting = false);
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.deepOcean),
+                child: _isSubmitting 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Submit', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -78,10 +184,7 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
                     children: [
                       Icon(Icons.history_toggle_off, size: 64, color: context.dynamicMuted.withOpacity(0.5)),
                       const SizedBox(height: 16),
-                      Text(
-                        'No past trips found.',
-                        style: TextStyle(color: context.dynamicMuted, fontSize: 16),
-                      ),
+                      Text('No past trips found.', style: TextStyle(color: context.dynamicMuted, fontSize: 16)),
                     ],
                   ),
                 )
@@ -98,7 +201,6 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
   }
 
   Widget _buildTripCard(dynamic trip, Color cardColor, Color textColor, BuildContext context) {
-    // --- 1. Safely Parse Date (Handles backend ISO timestamps AND mock strings) ---
     String dateText = trip['date'] ?? "Recent Ride"; 
     if (trip['timestamp'] != null) {
       try {
@@ -109,15 +211,13 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
       }
     }
 
-    // --- 2. Safely Parse Fare ---
     String fareText = "₱0.00";
     if (trip['fare'] is num) {
       fareText = '₱${(trip['fare'] as num).toStringAsFixed(2)}';
     } else if (trip['fare'] != null) {
-      fareText = trip['fare'].toString(); // Fallback for mock strings
+      fareText = trip['fare'].toString();
     }
 
-    // --- 3. Safely Parse Route (Handles real DB fields AND mock 'route' strings) ---
     String origin = trip['origin'] ?? 'Unknown';
     String dest = trip['destination'] ?? 'Unknown';
     if (trip['origin'] == null && trip['route'] != null) {
@@ -130,11 +230,9 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
       }
     }
 
-    // --- 4. Safely Parse Status & Driver ---
     String status = trip['status'] ?? 'Completed';
     if (status.isNotEmpty) status = status[0].toUpperCase() + status.substring(1).toLowerCase();
     bool isCompleted = status == 'Completed';
-    
     String driverName = trip['driver_name'] ?? trip['driver'] ?? 'Unknown Driver';
 
     return Container(
@@ -144,13 +242,7 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.dynamicBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          )
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,25 +256,12 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isCompleted ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: isCompleted ? Colors.green : Colors.redAccent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    decoration: BoxDecoration(color: isCompleted ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                    child: Text(status, style: TextStyle(color: isCompleted ? Colors.green : Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
-              Text(
-                fareText,
-                style: const TextStyle(color: AppColors.neonTeal, fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+              Text(fareText, style: const TextStyle(color: AppColors.neonTeal, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 12),
@@ -193,12 +272,7 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
               Expanded(child: Text(origin, style: TextStyle(color: textColor, fontWeight: FontWeight.w600))),
             ],
           ),
-          Container(
-            margin: const EdgeInsets.only(left: 7),
-            height: 12,
-            width: 2,
-            color: context.dynamicBorder,
-          ),
+          Container(margin: const EdgeInsets.only(left: 7), height: 12, width: 2, color: context.dynamicBorder),
           Row(
             children: [
               const Icon(Icons.location_on, color: Colors.redAccent, size: 16),
@@ -206,34 +280,24 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
               Expanded(child: Text(dest, style: TextStyle(color: textColor, fontWeight: FontWeight.w600))),
             ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(),
-          ),
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    radius: 12,
-                    backgroundColor: _deepOcean.withOpacity(0.1),
-                    child: Icon(Icons.person, size: 14, color: _deepOcean),
-                  ),
+                  CircleAvatar(radius: 12, backgroundColor: _deepOcean.withOpacity(0.1), child: Icon(Icons.person, size: 14, color: _deepOcean)),
                   const SizedBox(width: 8),
                   Text(driverName, style: TextStyle(color: context.dynamicMuted, fontSize: 12)),
                 ],
               ),
+              // THE RATING DIALOG BUTTON REPLACEMENT
               OutlinedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: const Text('Rating system opening...'), backgroundColor: _deepOcean),
-                  );
-                },
+                onPressed: () => _showRatingDialog(context, trip),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   minimumSize: const Size(0, 30),
-                  side: BorderSide(color: _neonTeal),
+                  side: const BorderSide(color: AppColors.neonTeal),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: const Text('Rate Driver', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.neonTeal)),
