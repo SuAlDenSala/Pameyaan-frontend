@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import 'star_rater.dart'; // Make sure this import points to your StarRater file
+import '../screens/commuter_app_screen.dart';
 
 class RatingModal extends StatefulWidget {
   final String driverId;
@@ -61,10 +62,24 @@ class _RatingModalState extends State<RatingModal> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final String commuterName = prefs.getString('full_name') ?? 'Commuter';
+        final String initials = commuterName.isNotEmpty ? commuterName[0].toUpperCase() : 'C';
+        final String email = prefs.getString('offline_id') ?? 'unknown@example.com';
+
         if (mounted) {
-          Navigator.of(context).popUntil((route) => route.isFirst); // Close the modal and everything else
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Ride logged and rated successfully!')),
+          );
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => CommuterAppScreen(
+                fullName: commuterName,
+                initials: initials,
+                discountStatus: 'Regular',
+                email: email,
+              ),
+            ),
+            (Route<dynamic> route) => false,
           );
         }
       }
@@ -92,83 +107,84 @@ class _RatingModalState extends State<RatingModal> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min, // Wrap content height
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 60),
-            const SizedBox(height: 16),
-            Text(
-              'Driver Scanned!',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Name: ${widget.driverName}'),
-            Text('Franchise: ${widget.franchiseNumber}'),
-            
-            const Divider(height: 32),
-            
-            // 🔥 HERE ARE THE INTERACTIVE STARS! 🔥
-            const Text(
-              'How was your ride?',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            
-            StarRater(
-              rating: _currentRating,
-              onRatingChanged: (rating) {
-                setState(() {
-                  _currentRating = rating;
-                });
-              },
-            ),
-            
-            const SizedBox(height: 16),
-            
-            TextField(
-              controller: _reviewController,
-              decoration: InputDecoration(
-                hintText: 'Add an optional review...',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      // 🔥 MAGIC FIX 2: SingleChildScrollView allows the keyboard to push the modal up safely!
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 60),
+              const SizedBox(height: 16),
+              Text(
+                'Driver Scanned!',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              maxLines: 2,
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
+              const SizedBox(height: 8),
+              Text('Name: ${widget.driverName}'),
+              Text('Franchise: ${widget.franchiseNumber}'),
+              
+              const Divider(height: 32),
+              
+              const Text(
+                'How was your ride?',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              
+              StarRater(
+                rating: _currentRating,
+                onRatingChanged: (rating) {
+                  setState(() {
+                    _currentRating = rating;
+                  });
+                },
+              ),
+              
+              const SizedBox(height: 16),
+              
+              TextField(
+                controller: _reviewController,
+                decoration: InputDecoration(
+                  hintText: 'Add an optional review...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_currentRating > 0 && !_isSubmitting) ? _submitRide : () {
-                      if (_currentRating == 0) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please select a star rating first!')),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
+                maxLines: 2,
+              ),
+              
+              const SizedBox(height: 24),
+              
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
                     ),
-                    child: _isSubmitting 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Log Ride'),
                   ),
-                ),
-              ],
-            )
-          ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: (_currentRating > 0 && !_isSubmitting) ? _submitRide : () {
+                        if (_currentRating == 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please select a star rating first!')),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: _isSubmitting 
+                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('Log Ride'),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
         ),
       ),
     );

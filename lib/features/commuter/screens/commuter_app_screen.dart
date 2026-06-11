@@ -19,6 +19,7 @@ class CommuterAppScreen extends StatefulWidget {
   final String discountStatus;
   final String email; 
 
+
   const CommuterAppScreen({
     super.key,
     required this.fullName,

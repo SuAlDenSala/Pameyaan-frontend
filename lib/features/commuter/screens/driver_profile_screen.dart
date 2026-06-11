@@ -4,6 +4,7 @@ import 'package:pemeyaan/core/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../widgets/star_rater.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'commuter_app_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   final String driverId;
@@ -86,13 +87,26 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
           _reviewController.clear(); // Clear text
         });
         
+        final String commuterName = prefs.getString('full_name') ?? 'Commuter';
+        final String initials = commuterName.isNotEmpty ? commuterName[0].toUpperCase() : 'C';
+        final String email = prefs.getString('offline_id') ?? 'unknown@example.com';
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Rating submitted successfully!')),
           );
           
-          // Close the screen upon success
-          Navigator.of(context).popUntil((route) => route.isFirst);
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => CommuterAppScreen(
+                fullName: commuterName,
+                initials: initials,
+                discountStatus: 'Regular',
+                email: email,
+              ),
+            ),
+            (Route<dynamic> route) => false,
+          );
         }
       }
     } on DioException catch (e) {
