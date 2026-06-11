@@ -14,15 +14,14 @@ class UnifiedFaresTab extends StatefulWidget {
 }
 
 class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
-  // --- Estimator State ---
   String? _selectedOrigin;
   String? _selectedDestination;
   double _distance = 0.0;
   double _estimatedFare = 0.0;
-  bool _isCalculating = false; // <-- NEW: Loading State Tracker
+  bool _isCalculating = false;
+  bool _isLockedOut = false; 
+  
   final List<String> _locations = DistanceCalculator.bongaoLocations.keys.toList()..sort();
-
-  // --- Matrix State ---
   bool _isLoading = true;
   List<dynamic> _fares = [];
   final Color _neonTeal = AppColors.neonTeal;
@@ -33,43 +32,27 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
     _fetchFareMatrix();
   }
 
-  // FIXED: Converted to async to support the loading effect
   Future<void> _calculateFare() async {
     if (_selectedOrigin != null && _selectedDestination != null) {
       if (_selectedOrigin == _selectedDestination) {
-        setState(() {
-          _distance = 0.0;
-          _estimatedFare = 0.0;
-          _isCalculating = false;
-        });
+        setState(() { _distance = 0.0; _estimatedFare = 0.0; _isCalculating = false; });
         return;
       }
       
-      // 1. Trigger the Loading Spinner
-      setState(() {
-        _isCalculating = true;
-      });
-
-      // 2. Add an intentional delay for the premium loading effect
+      setState(() => _isCalculating = true);
       await Future.delayed(const Duration(milliseconds: 800));
       
-      // 3. Perform the actual calculation
       double dist = DistanceCalculator.getDistanceInKm(_selectedOrigin!, _selectedDestination!);
       double baseFare = 20.0;
       double additionalFare = dist > 1.0 ? (dist - 1.0) * 5.0 : 0.0;
       double totalFare = baseFare + additionalFare;
       
       if (widget.discountStatus != 'Regular') {
-        totalFare = totalFare * 0.80; // 20% LGU Discount
+        totalFare = totalFare * 0.80;
       }
       
-      // 4. Stop Loading and Reveal Result!
       if (mounted) {
-        setState(() {
-          _distance = dist;
-          _estimatedFare = totalFare;
-          _isCalculating = false;
-        });
+        setState(() { _distance = dist; _estimatedFare = totalFare; _isCalculating = false; });
       }
     }
   }
@@ -77,23 +60,35 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
   Future<void> _fetchFareMatrix() async {
     final prefs = await SharedPreferences.getInstance();
     const cacheKey = 'fare_matrix_cache';
+    const dateKey = 'fare_matrix_sync_date';
     
     final cachedData = prefs.getString(cacheKey);
-    if (cachedData != null) {
-      setState(() {
-        _fares = jsonDecode(cachedData);
-        _isLoading = false;
-      });
+    final syncDateStr = prefs.getString(dateKey);
+
+    if (syncDateStr != null && cachedData != null) {
+      final lastSyncDate = DateTime.parse(syncDateStr);
+      final daysSinceSync = DateTime.now().difference(lastSyncDate).inDays;
+      
+      if (daysSinceSync > 30) {
+        setState(() => _isLockedOut = true);
+      } else {
+        setState(() {
+          _fares = jsonDecode(cachedData);
+          _isLoading = false;
+        });
+      }
     }
     
     try {
       final response = await ApiClient.instance.get('/fares/');
       if (response.statusCode == 200) {
         await prefs.setString(cacheKey, jsonEncode(response.data));
+        await prefs.setString(dateKey, DateTime.now().toIso8601String()); 
         if (!mounted) return;
         setState(() {
           _fares = response.data;
           _isLoading = false;
+          _isLockedOut = false; 
         });
       }
     } catch (e) {
@@ -114,7 +109,7 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
             if (isOrigin) _selectedOrigin = val;
             else _selectedDestination = val;
           });
-          _calculateFare(); // Automatically triggers the calculation and loading spinner!
+          _calculateFare();
         },
       ),
     );
@@ -149,102 +144,109 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
                   Text('Select your route to calculate the official LGU fare.', style: TextStyle(color: context.dynamicMuted)),
                   const SizedBox(height: 24),
                   
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-                    ),
-                    child: Column(
-                      children: [
-                        _buildDropdown(
-                          label: 'Pick-up Location', icon: Icons.my_location, iconColor: AppColors.neonTeal,
-                          value: _selectedOrigin, isOrigin: true,
-                        ),
-                        const Padding(padding: EdgeInsets.only(left: 18, top: 8, bottom: 8), child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.more_vert, color: Colors.grey))),
-                        _buildDropdown(
-                          label: 'Drop-off Destination', icon: Icons.location_on, iconColor: Colors.redAccent,
-                          value: _selectedDestination, isOrigin: false,
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // NEW: THE LOADING OR RESULTS CARD
-                  if (_isCalculating) ...[
-                    const SizedBox(height: 24),
-                    Container(
-                      height: 140, // Keeps the card height consistent
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [AppColors.deepOcean, Color(0xFF1A365D)]),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: AppColors.deepOcean.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
-                      ),
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(color: AppColors.neonTeal),
-                            SizedBox(height: 16),
-                            Text('Calculating optimal route...', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0))
-                          ],
-                        ),
-                      ),
-                    ),
-                  ] 
-                  else if (_selectedOrigin != null && _selectedDestination != null && _selectedOrigin != _selectedDestination) ...[
-                    const SizedBox(height: 24),
+                  if (_isLockedOut) ...[
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [AppColors.deepOcean, Color(0xFF1A365D)]),
+                        color: Colors.redAccent.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: [BoxShadow(color: AppColors.deepOcean.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                        border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
                       ),
-                      child: Column(
+                      child: const Column(
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Estimated Fare', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16)),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(color: AppColors.neonTeal.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                                child: Text(widget.discountStatus.toUpperCase(), style: const TextStyle(color: AppColors.neonTeal, fontSize: 10, fontWeight: FontWeight.bold)),
-                              )
-                            ],
+                          Icon(Icons.security, color: Colors.redAccent, size: 48),
+                          SizedBox(height: 16),
+                          Text('Security Lockout Active', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 8),
+                          Text(
+                            'Your local fare matrix has not been synchronized in over 30 days. To prevent the use of outdated pricing, offline calculation is disabled. Please connect to the internet to refresh the official LGU rates.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.redAccent, fontSize: 12),
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text('₱ ', style: TextStyle(color: AppColors.neonTeal, fontSize: 24, fontWeight: FontWeight.bold)),
-                              Text(_estimatedFare.toStringAsFixed(2), style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold, height: 1.0)),
-                            ],
-                          ),
-                          const Divider(color: Colors.white24, height: 32),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('Trip Distance:', style: TextStyle(color: Colors.white70)),
-                              Text('${_distance.toStringAsFixed(1)} km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            ],
-                          )
                         ],
                       ),
                     ),
-                  ],
-                  
-                  if (_selectedOrigin == _selectedDestination && _selectedOrigin != null)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: Center(child: Text("Pick-up and Drop-off cannot be the same.", style: TextStyle(color: Colors.redAccent))),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildDropdown(label: 'Pick-up Location', icon: Icons.my_location, iconColor: AppColors.neonTeal, value: _selectedOrigin, isOrigin: true),
+                          const Padding(padding: EdgeInsets.only(left: 18, top: 8, bottom: 8), child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.more_vert, color: Colors.grey))),
+                          _buildDropdown(label: 'Drop-off Destination', icon: Icons.location_on, iconColor: Colors.redAccent, value: _selectedDestination, isOrigin: false),
+                        ],
+                      ),
                     ),
                     
+                    if (_isCalculating) ...[
+                      const SizedBox(height: 24),
+                      Container(
+                        height: 140,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [AppColors.deepOcean, Color(0xFF1A365D)]),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(color: AppColors.neonTeal),
+                              SizedBox(height: 16),
+                              Text('Calculating optimal route...', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold))
+                            ],
+                          ),
+                        ),
+                      ),
+                    ] else if (_selectedOrigin != null && _selectedDestination != null && _selectedOrigin != _selectedDestination) ...[
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [AppColors.deepOcean, Color(0xFF1A365D)]),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Estimated Fare', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: AppColors.neonTeal.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                                  child: Text(widget.discountStatus.toUpperCase(), style: const TextStyle(color: AppColors.neonTeal, fontSize: 10, fontWeight: FontWeight.bold)),
+                                )
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text('₱ ', style: TextStyle(color: AppColors.neonTeal, fontSize: 24, fontWeight: FontWeight.bold)),
+                                Text(_estimatedFare.toStringAsFixed(2), style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold, height: 1.0)),
+                              ],
+                            ),
+                            const Divider(color: Colors.white24, height: 32),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Trip Distance:', style: TextStyle(color: Colors.white70)),
+                                Text('${_distance.toStringAsFixed(1)} km', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ],
+                            )
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                    
                   const SizedBox(height: 48),
-                  
                   Text('Official Fare Matrix', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 8),
                   Text('Standard LGU approved tricycle rates for Bongao.', style: TextStyle(color: context.dynamicMuted)),
@@ -293,10 +295,7 @@ class _UnifiedFaresTabState extends State<UnifiedFaresTab> {
         ),
         child: Text(
           value ?? '',
-          style: TextStyle(
-            color: context.dynamicText,
-            fontSize: 16,
-          ),
+          style: TextStyle(color: context.dynamicText, fontSize: 16),
           overflow: TextOverflow.ellipsis,
         ),
       ),

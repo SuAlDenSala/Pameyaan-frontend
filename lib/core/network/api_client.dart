@@ -10,7 +10,7 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         // UPDATED: Your specific Local IP Address with port 2111
-        baseUrl: 'https://pameyaan.onrender.com/api', 
+        baseUrl: 'http://192.168.50.42:2005/api', 
         
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),

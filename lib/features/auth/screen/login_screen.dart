@@ -53,6 +53,10 @@ class _LoginScreenState extends State<LoginScreen> {
         final token = response.data['access_token'];
         final fetchedName = response.data['name']; // Grab the real name from backend!
 
+        // Save token to SharedPreferences for later use
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('access_token', token);
+
         ApiClient.instance.options.headers['Authorization'] = 'Bearer $token';
         
         try {
@@ -66,10 +70,16 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         // Save Credentials + Real Name to SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('offline_id', inputId);
         await prefs.setString('offline_pass', inputPass);
         await prefs.setBool('offline_isDriver', widget.isDriver);
+        
+        final String qrHash = response.data['qr_hash'] 
+                           ?? response.data['qr_code'] 
+                           ?? response.data['driver_id'] 
+                           ?? response.data['franchise_number'] 
+                           ?? '';
+        await prefs.setString('driver_qr_hash', qrHash.toString());
         
         if (fetchedName != null) {
           await prefs.setString('offline_name', fetchedName); // <-- CACHE REAL NAME HERE

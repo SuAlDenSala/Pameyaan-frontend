@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../screens/driver_profile_screen.dart';
 
 class TripHistoryTab extends StatefulWidget {
   const TripHistoryTab({super.key});
@@ -51,9 +52,6 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
     }
   }
 
-  // ==========================================
-  // NEW: THE REAL RATING DIALOG LOGIC
-  // ==========================================
   void _showRatingDialog(BuildContext context, dynamic trip) {
     int _rating = 5;
     bool _isFlagged = false;
@@ -220,16 +218,7 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
 
     String origin = trip['origin'] ?? 'Unknown';
     String dest = trip['destination'] ?? 'Unknown';
-    if (trip['origin'] == null && trip['route'] != null) {
-      final parts = trip['route'].toString().split(' to ');
-      if (parts.length == 2) {
-        origin = parts[0];
-        dest = parts[1];
-      } else {
-        origin = trip['route'];
-      }
-    }
-
+    
     String status = trip['status'] ?? 'Completed';
     if (status.isNotEmpty) status = status[0].toUpperCase() + status.substring(1).toLowerCase();
     bool isCompleted = status == 'Completed';
@@ -291,9 +280,21 @@ class _TripHistoryTabState extends State<TripHistoryTab> {
                   Text(driverName, style: TextStyle(color: context.dynamicMuted, fontSize: 12)),
                 ],
               ),
-              // THE RATING DIALOG BUTTON REPLACEMENT
               OutlinedButton(
-                onPressed: () => _showRatingDialog(context, trip),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DriverProfileScreen(
+                        driverId: trip['driver_id']?.toString() ?? 'unknown_id',
+                        driverName: driverName,
+                        franchiseNumber: trip['franchise_number']?.toString() ?? 'TBD',
+                        initialTrustScore: trip['trust_score']?.toString() ?? '5.0',
+                        initialTotalRatings: trip['total_ratings'] ?? 1,
+                      ),
+                    ),
+                  );
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   minimumSize: const Size(0, 30),

@@ -50,7 +50,7 @@ class _SignupScreenState extends State<SignupScreen> {
       final payload = widget.isDriver
           ? {
               "name": _nameController.text.trim(),
-              "franchise_number": _franchiseController.text.trim(),
+              "franchise_number": _franchiseController.text.replaceAll(RegExp(r'[^0-9]'), ''),
               "email": _emailController.text.trim(), // <-- NEW: Send email for Driver SSO Handshake
               "password": _passwordController.text
             }
@@ -76,7 +76,13 @@ class _SignupScreenState extends State<SignupScreen> {
       String msg = 'Registration failed.';
       if (e.response?.statusCode == 422 && e.response?.data != null) {
         final detail = e.response!.data['detail'];
-        msg = detail is List && detail.isNotEmpty ? 'Error: ${detail[0]['msg']}' : 'Error: $detail';
+        if (detail is List && detail.isNotEmpty) {
+          final firstError = detail[0];
+          final fieldLoc = firstError['loc'] is List && firstError['loc'].length > 1 ? firstError['loc'].last : '';
+          msg = 'Validation Error${fieldLoc != '' ? ' in $fieldLoc' : ''}: ${firstError['msg']}';
+        } else {
+          msg = 'Error: $detail';
+        }
       } else {
         msg = e.response?.data['detail'] ?? msg;
       }

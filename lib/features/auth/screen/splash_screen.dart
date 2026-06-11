@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'role_selection_screen.dart';
+import '../../driver/screens/driver_dashboard_screen.dart';
+import '../../commuter/screens/commuter_app_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -37,13 +40,60 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.forward();
 
-    // 2. FASTER: Waits only 1.5 seconds before moving to the next screen
-    Timer(const Duration(milliseconds: 1500), () {
+    _checkLoginState();
+  }
+
+  void _checkLoginState() async {
+    // Check if user is logged in
+    final prefs = await SharedPreferences.getInstance();
+    final savedId = prefs.getString('offline_id');
+    final isDriver = prefs.getBool('offline_isDriver') ?? false;
+    final savedName = prefs.getString('offline_name') ?? '';
+
+    // Still wait at least 1.5 seconds so the splash animation finishes
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted) return;
+
+    if (savedId != null && savedId.isNotEmpty) {
+      String extractedName = savedName;
+      if (extractedName.isEmpty) {
+        extractedName = savedId.contains('@') ? savedId.split('@')[0] : savedId;
+        if (extractedName.isNotEmpty) {
+          extractedName = extractedName[0].toUpperCase() + extractedName.substring(1).toLowerCase();
+        } else {
+          extractedName = isDriver ? "Driver" : "Commuter";
+        }
+      }
+
+      String userInitials = extractedName.isNotEmpty ? extractedName[0].toUpperCase() : (isDriver ? 'D' : 'C');
+      String formatId = isDriver ? savedId.toUpperCase() : 'UNKNOWN-ID';
+
+      if (isDriver) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => DriverDashboardScreen(
+            driverName: extractedName,
+            initials: userInitials,
+            franchiseNumber: formatId
+          )),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => CommuterAppScreen(
+            fullName: extractedName,
+            initials: userInitials,
+            discountStatus: 'Regular',
+            email: savedId
+          )),
+        );
+      }
+    } else {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
       );
-    });
+    }
   }
 
   @override

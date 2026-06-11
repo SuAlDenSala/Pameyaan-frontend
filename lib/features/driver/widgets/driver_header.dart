@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 import '../../../core/theme/app_theme.dart';
 import '../screens/driver_settings_screen.dart'; 
 
@@ -7,6 +8,8 @@ class DriverHeader extends StatelessWidget {
   final String driverName;
   final String initials;
   final String franchiseNumber;
+  final double communityTrustScore;
+  final int totalRatings;
   final Function(String) onProfileUpdated; 
 
   const DriverHeader({
@@ -14,13 +17,20 @@ class DriverHeader extends StatelessWidget {
     required this.driverName,
     required this.initials,
     required this.franchiseNumber,
+    required this.communityTrustScore,
+    required this.totalRatings,
     required this.onProfileUpdated, 
   });
 
   final Color _deepOcean = AppColors.deepOcean;
   final Color _neonTeal = AppColors.neonTeal;
 
-  void _showDriverQR(BuildContext context) {
+  void _showDriverQR(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String qrHash = prefs.getString('driver_qr_hash') ?? '';
+
+    if (!context.mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -45,7 +55,24 @@ class DriverHeader extends StatelessWidget {
                 child: Text('Franchise: $franchiseNumber', style: TextStyle(color: Colors.teal[800], fontSize: 12, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 24),
-              QrImageView(data: 'DRIVER:$franchiseNumber', version: QrVersions.auto, size: 200.0, foregroundColor: _deepOcean),
+              
+              if (qrHash.isNotEmpty)
+                QrImageView(
+                  data: qrHash, 
+                  version: QrVersions.auto, 
+                  size: 200.0, 
+                  foregroundColor: _deepOcean
+                )
+              else 
+                const Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Text(
+                    "QR Code Unavailable.\nPlease log out and log back in to sync your profile.", 
+                    textAlign: TextAlign.center, 
+                    style: TextStyle(color: Colors.redAccent)
+                  ),
+                ),
+                
               const SizedBox(height: 12),
               const Text('Commuters can scan this to log their ride', style: TextStyle(color: Colors.grey, fontSize: 12)),
               const SizedBox(height: 24),
@@ -89,7 +116,6 @@ class DriverHeader extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 24,
-                      // DYNAMIC: Reverses the colors so the avatar pops in Light Mode!
                       backgroundColor: context.isDarkMode ? Colors.white : AppColors.deepOcean,
                       child: Text(initials, style: TextStyle(color: context.isDarkMode ? AppColors.deepOcean : Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                     ),
@@ -98,18 +124,32 @@ class DriverHeader extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // FIXED: Uses dynamicMuted instead of hardcoded white
                           Text('On Duty,', style: TextStyle(color: context.dynamicMuted, fontSize: 12)),
                           Row(
                             children: [
                               Flexible(
                                 child: Text(
                                   driverName, 
-                                  // FIXED: Uses dynamicText instead of hardcoded white
                                   style: TextStyle(color: context.dynamicText, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
                                 ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.star, color: Colors.amber, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                communityTrustScore > 0 ? communityTrustScore.toStringAsFixed(1) : 'New',
+                                style: TextStyle(color: context.dynamicText, fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '($totalRatings reviews)',
+                                style: TextStyle(color: context.dynamicMuted, fontSize: 12),
                               ),
                             ],
                           ),
@@ -128,7 +168,6 @@ class DriverHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8), 
-          // FIXED: QR icon uses dynamicText
           IconButton(icon: Icon(Icons.qr_code, color: context.dynamicText, size: 28), onPressed: () => _showDriverQR(context)),
         ],
       ),

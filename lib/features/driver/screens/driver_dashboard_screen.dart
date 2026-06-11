@@ -9,6 +9,7 @@ import '../widgets/trip_manager.dart';
 import '../widgets/driver_tabs.dart';
 import '../widgets/driver_my_trips_tab.dart'; 
 import '../widgets/sync_queue_panel.dart'; // <-- ADDED SYNC PANEL IMPORT
+import '../widgets/driver_feedback_tab.dart';
 import 'driver_settings_screen.dart';
 import 'driver_notifications_screen.dart';
 
@@ -36,6 +37,9 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
   double _todaysEarnings = 0.0;
   List<Map<String, dynamic>> _recentTrips = [];
   bool _isLoadingTrips = true;
+  
+  double _communityTrustScore = 0.0;
+  int _totalRatings = 0;
 
   late String _currentDriverName;
   late String _currentInitials;
@@ -73,6 +77,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
           _currentDriverName = parsed['driver_name'];
           _currentInitials = _currentDriverName.isNotEmpty ? _currentDriverName[0].toUpperCase() : 'D';
         }
+        _communityTrustScore = (parsed['community_trust_score'] ?? 0.0).toDouble();
+        _totalRatings = parsed['total_ratings'] ?? 0;
         _isLoadingTrips = false;
       });
     }
@@ -94,6 +100,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
             _currentDriverName = response.data['driver_name'];
             _currentInitials = _currentDriverName.isNotEmpty ? _currentDriverName[0].toUpperCase() : 'D';
           }
+          _communityTrustScore = (response.data['community_trust_score'] ?? 0.0).toDouble();
+          _totalRatings = response.data['total_ratings'] ?? 0;
           _isLoadingTrips = false;
         });
       }
@@ -215,6 +223,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
               driverName: _currentDriverName,
               initials: _currentInitials,
               franchiseNumber: widget.franchiseNumber,
+              communityTrustScore: _communityTrustScore,
+              totalRatings: _totalRatings,
               onProfileUpdated: _updateProfileData,
             ),
             Expanded(
@@ -251,7 +261,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
                             recentTrips: _recentTrips,
                           ),
                           const DriverAlertsTab(),
-                          const ActiveDriversTab(),
+                          const DriverFeedbackTab(),
                         ],
                       ),
                       if (_isLoadingTrips)
@@ -304,7 +314,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen>
         tabs: const [
           Tab(text: 'Today\'s Earnings'),
           Tab(text: 'Alerts'),
-          Tab(text: 'Active Drivers'),
+          Tab(text: 'Feedback'),
         ],
       ),
     );
